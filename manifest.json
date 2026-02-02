@@ -1,0 +1,49 @@
+{
+  "name": "XV Riigikogu Desktop Dashboard",
+  "short_name": "Riigikogu",
+  "description": "Estonian Parliament analysis dashboard for desktop workstations",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#ffffff",
+  "theme_color": "#0072CE",
+  "scope": "/",
+  "categories": ["productivity", "government", "politics"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Parliament Floor",
+      "short_name": "Parliament",
+      "description": "View current parliamentary composition",
+      "url": "./index.html#parliament",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Members Directory",
+      "short_name": "Members",
+      "description": "Browse all 101 MPs",
+      "url": "./index.html#members",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Coalition Calculator",
+      "short_name": "Calculator",
+      "description": "Calculate coalition scenarios",
+      "url": "./index.html#calculator",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
