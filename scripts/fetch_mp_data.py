@@ -24,9 +24,13 @@ def scrape_mps():
     soup = BeautifulSoup(resp.text, "html.parser")
 
     mps = []
-    # Each MP is in a card/list element — adjust selector if site structure changes
-    for card in soup.select(".mp-list-item, .member-item, article"):
-        name_tag = card.find("a")
+    # Each MP is in a li.item element on the riigikogu.ee member list page
+    for card in soup.select("li.item"):
+        # Name and profile URL from the h3 > a inside div.content
+        content = card.select_one("div.content")
+        if not content:
+            continue
+        name_tag = content.select_one("h3 a")
         if not name_tag:
             continue
         name = name_tag.get_text(strip=True)
@@ -34,14 +38,17 @@ def scrape_mps():
             continue
 
         profile_url = urljoin(BASE, name_tag.get("href", ""))
-        
-        img = card.find("img")
-        photo_url = img.get("src", "") if img else ""
+
+        # Photo URL from lazy-loaded img (data-original attribute)
+        img = card.select_one("img.lazy")
+        photo_url = ""
+        if img:
+            photo_url = img.get("data-original", "") or img.get("src", "")
         if photo_url and not photo_url.startswith("http"):
             photo_url = urljoin(BASE, photo_url)
 
-        faction_tag = card.find(class_=lambda c: c and "faction" in c.lower()) \
-                      or card.find("strong")
+        # Faction from the <strong> tag inside content
+        faction_tag = content.find("strong")
         faction = faction_tag.get_text(strip=True) if faction_tag else "Unknown"
 
         mps.append({
