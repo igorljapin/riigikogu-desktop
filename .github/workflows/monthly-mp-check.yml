@@ -1,0 +1,76 @@
+name: Monthly Riigikogu MP Data Check
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Fetch current MP data
+        run: python scripts/fetch_mp_data.py
+
+      - name: Compare against baseline
+        id: compare
+        run: python scripts/compare_mp_data.py
+
+      - name: Log and exit if no changes
+        if: steps.compare.outputs.changes_detected == 'false'
+        run: echo "✅ No changes detected on $(date -u). Nothing to do."
+
+      - name: Commit change report and open PR
+        if: steps.compare.outputs.changes_detected == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MONTH_YEAR=$(date +"%B %Y")
+          BRANCH="mp-data-check/${MONTH_YEAR// /-}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add data/change_report.json data/mp_data_fetched.json
+          git commit -m "MP data check — ${MONTH_YEAR}: changes detected"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "⚠️ MP Data Update Required — ${MONTH_YEAR}" \
+            --body "$(python3 -c "
+import json
+r = json.load(open('data/change_report.json'))
+lines = ['## Riigikogu MP Changes Detected', '']
+if r['new_members']:
+    lines.append('### New Members')
+    for m in r['new_members']:
+        lines.append(f\"- {m['name']} ({m.get('faction','?')})\")
+    lines.append('')
+if r['removed_members']:
+    lines.append('### Removed Members')
+    for m in r['removed_members']:
+        lines.append(f\"- {m['name']}\")
+    lines.append('')
+if r['party_switches']:
+    lines.append('### Party Switches — review carefully')
+    for s in r['party_switches']:
+        lines.append(f\"- {s['name']}: {s['from']} to {s['to']}\")
+    lines.append('')
+lines.append('## Next Step')
+lines.append('Open Claude Code on the web, select this branch, and run the update task per CLAUDE.md.')
+print('\n'.join(lines))
+          ")" \
+            --base main
