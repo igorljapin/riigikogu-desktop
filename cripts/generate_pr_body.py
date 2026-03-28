@@ -1,30 +1,98 @@
 #!/usr/bin/env python3
-import json, os
+"""
+Fetches current MP data from the Riigikogu official API.
+Endpoint: GET https://api.riigikogu.ee/api/plenary-members?lang=en
+Returns 101 active MPs in a single call — no UUID chaining needed.
+"""
 
-r = json.load(open("data/change_report.json"))
-month_year = os.environ.get("MONTH_YEAR", "Unknown Month")
+import requests
+import json
+import sys
+import os
+from datetime import datetime
 
-lines = [f"## Riigikogu MP Changes Detected — {month_year}", ""]
+API_URL = "https://api.riigikogu.ee/api/plenary-members?lang=en"
+WEB_BASE = "https://www.riigikogu.ee/en/parliament-of-estonia/composition/members-riigikogu/saadik"
 
-if r["new_members"]:
-    lines.append("### New Members")
-    for m in r["new_members"]:
-        lines.append(f"- {m['name']} ({m.get('faction', '?')})")
-    lines.append("")
+session = requests.Session()
+session.headers.update({
+    "Accept": "application/json",
+    "User-Agent": "RiigikoguMonitor/1.0"
+})
 
-if r["removed_members"]:
-    lines.append("### Removed Members")
-    for m in r["removed_members"]:
-        lines.append(f"- {m['name']}")
-    lines.append("")
+print("Fetching MP data from Riigikogu API...")
 
-if r["party_switches"]:
-    lines.append("### Party Switches — review carefully before merging")
-    for s in r["party_switches"]:
-        lines.append(f"- {s['name']}: {s['from']} → {s['to']}")
-    lines.append("")
+try:
+    resp = session.get(API_URL, timeout=30)
+    resp.raise_for_status()
+    raw = resp.json()
+except Exception as e:
+    print(f"ERROR: API request failed — {e}")
+    sys.exit(1)
 
-lines.append("## Next Step")
-lines.append("Open Claude Code on the web, select this branch, and run the update task per CLAUDE.md.")
+print(f"API returned {len(raw)} records")
 
-print("\n".join(lines))
+if len(raw) < 90:
+    print(f"ERROR: Only {len(raw)} MPs returned — likely an API issue. Aborting.")
+    sys.exit(1)
+
+mps = []
+skipped = 0
+
+for m in raw:
+    # Only include active members
+    if not m.get("active", True):
+        skipped += 1
+        continue
+
+    uuid = m.get("uuid", "")
+    full_name = m.get("fullName", "").strip()
+
+    if not full_name:
+        skipped += 1
+        continue
+
+    # Faction: take the first active faction name
+    faction = "Unknown"
+    for f in m.get("factions", []):
+        if f.get("name"):
+            faction = f["name"].strip()
+            break
+
+    # Photo URL: nested under photo._links.download.href
+    photo_url = ""
+    try:
+        photo_url = m["photo"]["_links"]["download"]["href"]
+    except (KeyError, TypeError):
+        pass
+
+    # Profile URL: construct web URL from UUID and name
+    # Format: /saadik/{uuid}/{First-Last}
+    name_slug = full_name.replace(" ", "-")
+    profile_url = f"{WEB_BASE}/{uuid}/{name_slug}" if uuid else ""
+
+    mps.append({
+        "name": full_name,
+        "uuid": uuid,
+        "photoUrl": photo_url,
+        "profileUrl": profile_url,
+        "faction": faction,
+        "fetched_at": datetime.utcnow().isoformat()
+    })
+
+print(f"Processed {len(mps)} active MPs ({skipped} skipped)")
+
+os.makedirs("data", exist_ok=True)
+with open("data/mp_data_fetched.json", "w", encoding="utf-8") as f:
+    json.dump(mps, f, ensure_ascii=False, indent=2)
+
+print("Saved to data/mp_data_fetched.json")
+
+# Show a sample for verification
+if mps:
+    sample = mps[0]
+    print(f"\nSample entry:")
+    print(f"  Name:    {sample['name']}")
+    print(f"  Faction: {sample['faction']}")
+    print(f"  Photo:   {sample['photoUrl'][:60]}...")
+    print(f"  Profile: {sample['profileUrl']}")
