@@ -1,48 +1,24 @@
-const CACHE_NAME = 'riigikogu-desktop-v1';
-const urlsToCache = [
-  './index.html',
-  './manifest.json'
-];
+// riigikogu-desktop has retired behind a redirect to riigikogu-mobile's
+// desktop surface. This worker's only job now is to make sure it does not
+// keep serving the old cached app forever: it wipes every cache it (or an
+// earlier version of itself) created, unregisters itself, and sends any
+// open window — including an already-installed standalone PWA, where the
+// redirect stub's meta-refresh may not fire — to the new home.
+const NEW_URL = 'https://igorljapin.github.io/riigikogu-mobile/desktop/';
 
-// Install event - cache essential files
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', event => {
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map((name) => caches.delete(name)));
+      await self.registration.unregister();
 
-// Fetch event - network first, fallback to cache (for desktop online reliability)
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // Clone response for cache
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, responseClone);
-        });
-        return response;
-      })
-      .catch(() => {
-        // Fallback to cache when offline
-        return caches.match(event.request);
-      })
+      const windows = await self.clients.matchAll({ type: 'window' });
+      await Promise.all(windows.map((client) => client.navigate(NEW_URL)));
+    })()
   );
 });
